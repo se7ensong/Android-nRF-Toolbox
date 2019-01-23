@@ -151,8 +151,8 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
      */
 
     public void onSyncTimeClicked (final View view) {
-        // G/time:%d
-        send("G/time:"+ mCalendar.getTimeInMillis() / 1000L);
+        // S/time:%d
+        send("S/time:"+ ((mCalendar.getTimeInMillis() / 1000L) - 946684800));
         displayAlert(mCalendar.getTime().toString());
     }
 
