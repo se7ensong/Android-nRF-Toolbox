@@ -74,7 +74,39 @@
 			android:verticalSpacing="4dp"
 			tools:listitem="@layout/feature_uart_button"/>
 
-	</LinearLayout>
+        <Button
+            android:id="@+id/action_syncTime"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:enabled="false"
+            android:onClick="onSyncTimeClicked"
+            android:text="Sync Time" />
+
+        <Button
+            android:id="@+id/action_selectFile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:enabled="false"
+            android:onClick="onSelectFileLSClicked"
+            android:text="Select FILE" />
+
+        <Button
+            android:id="@+id/action_getLifestyleHistory"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:enabled="false"
+            android:onClick="onGetLSHistoryClicked"
+            android:text="Get LIFESTYLE HISTORY" />
+
+        <Button
+            android:id="@+id/action_eraseLifestyleHistory"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:enabled="false"
+            android:onClick="onEraseLSHistoryClicked"
+            android:text="ERASE LIFESTYLE HISTORY" />
+
+    </LinearLayout>
 
 	<Button
 		android:id="@+id/action_connect"

@@ -32,8 +32,11 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.bluetooth.BluetoothDevice;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -52,6 +55,7 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.DialogFragment;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v4.widget.SlidingPaneLayout;
 import android.support.v7.app.AlertDialog;
 import android.util.Log;
@@ -60,6 +64,7 @@ import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListView;
 import android.widget.Toast;
+import android.widget.Button;
 
 import com.google.android.gms.common.api.GoogleApiClient;
 
@@ -80,10 +85,12 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.StringWriter;
+import java.util.Calendar;
 import java.util.UUID;
 
 import no.nordicsemi.android.nrftoolbox.R;
@@ -100,7 +107,9 @@ import no.nordicsemi.android.nrftoolbox.widget.ClosableSpinner;
 
 public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UARTBinder> implements UARTInterface,
 		UARTNewConfigurationDialogFragment.NewConfigurationDialogListener, UARTConfigurationsAdapter.ActionListener, AdapterView.OnItemSelectedListener,
+        UARTNewHistoryFileDialogFragment.NewFileDialogListener,
 		GoogleApiClient.ConnectionCallbacks {
+	private Button mSyncTime, mSelectFile, mGetLifestyleHistory, mEraseLifestyleHitsory;
 	private final static String TAG = "UARTActivity";
 
 	private final static String PREFS_BUTTON_ENABLED = "prefs_uart_enabled_";
@@ -125,9 +134,90 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
 	private ClosableSpinner mConfigurationSpinner;
 	private SlidingPaneLayout mSlider;
 	private View mContainer;
-	private UARTService.UARTBinder mServiceBinder;
+    private UARTService.UARTBinder mServiceBinder;
 	private ConfigurationListener mConfigurationListener;
 	private boolean mEditMode;
+	private Calendar mCalendar = Calendar.getInstance();
+    private String mHistoryFile;
+    private FileOutputStream fos = null;
+
+    private File folder = null;
+    private File file = null;
+    private static int idx = 0;
+    private int mLSHistoryCount = 0;
+
+    /**
+     * 	Methods for downloading lifestyle history to a file
+     */
+
+    public void onSyncTimeClicked (final View view) {
+        // G/time:%d
+        send("G/time:"+ mCalendar.getTimeInMillis() / 1000L);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+
+        builder.setTitle("Time Synchronised")
+                .setMessage(mCalendar.getTime().toString());
+
+        AlertDialog dialog = builder.create();
+        dialog.show();
+    }
+
+    public void onSelectFileLSClicked (final View view) {
+        final DialogFragment fragment = UARTNewHistoryFileDialogFragment.getInstance("LSHistory_"+
+                mCalendar.get(Calendar.MINUTE) +
+                mCalendar.get(Calendar.HOUR_OF_DAY) +
+                mCalendar.get(Calendar.DATE) , false);
+        fragment.show(getSupportFragmentManager(), null);
+        mGetLifestyleHistory.setEnabled(true);
+    }
+
+    public void onGetLSHistoryClicked (final View view) {
+
+        final File folder = new File(Environment.getExternalStorageDirectory(), "LifeStyleHistory");
+        if (!folder.exists())
+            folder.mkdir();
+
+        final File file = new File(folder, mHistoryFile);
+        if (file.exists()) {
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+
+            builder.setMessage("File Exist! Change file first!")
+                    .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int id) {
+                            onSelectFileLSClicked(view);
+                        }
+                    });
+            AlertDialog dialog = builder.create();
+            dialog.show();
+        }
+        else {
+            try {
+                file.createNewFile();
+                send(new byte[] {(byte)0xFE, (byte)0xFE, 0x01, 0x29});  // GetPenaltyCount
+
+                // Notify user about the file
+                AlertDialog.Builder builder = new AlertDialog.Builder(this);
+                builder.setMessage("Lifestyle History Downloaded");
+                AlertDialog dialog = builder.create();
+                dialog.show();
+
+            } catch (final Exception e) {
+                AlertDialog.Builder builder = new AlertDialog.Builder(this);
+                builder.setMessage("Error downloading data:" + e.getMessage());
+                AlertDialog dialog = builder.create();
+                dialog.show();
+            }
+        }
+    }
+
+    public void onEraseLSHistoryClicked (final View view) {
+        send(new byte[] {(byte)0xFE, (byte)0xFE, 0x01, 0x2D});  // CleanPenaltyHistory
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        AlertDialog dialog = builder.create();
+        dialog.show();
+
+    }
 
 	public interface ConfigurationListener {
 		void onConfigurationModified();
@@ -247,7 +337,84 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
 				}
 			});
 		}
-	}
+
+		mSelectFile = findViewById(R.id.action_selectFile);
+		mSyncTime = findViewById(R.id.action_syncTime);
+		mGetLifestyleHistory = findViewById(R.id.action_getLifestyleHistory);
+        mEraseLifestyleHitsory = findViewById(R.id.action_eraseLifestyleHistory);
+
+        LocalBroadcastManager.getInstance(this).registerReceiver(mLifestyleHistoryReceiver, new IntentFilter("no.nordicsemi.android.nrftoolbox.uart.BROADCAST_UART_RX"));
+    }
+
+    private BroadcastReceiver mLifestyleHistoryReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            final boolean hasData = intent.hasExtra("no.nordicsemi.android.nrftoolbox.uart.EXTRA_DATA");
+            if (hasData) {
+                byte _data[] = intent.getByteArrayExtra("no.nordicsemi.android.nrftoolbox.uart.EXTRA_DATA");
+
+                switch (_data[3]) {
+                    case 0x2A:	// GetPenaltyCount_RSP
+                        mLSHistoryCount = _data[4];
+                        if (mLSHistoryCount != 0) {
+                            folder = new File(Environment.getExternalStorageDirectory(), "LifeStyleHistory");
+                            file = new File(folder, mHistoryFile);
+                            if (file.exists()) {
+                                try {
+                                    fos = new FileOutputStream(file, true);
+                                    // Start requesting the first record
+                                    send(new byte[]{(byte) 0xFE, (byte) 0xFE, 0x02, 0x2B, (byte)idx});    // Last byte is index
+                                    idx++;
+                                } catch (FileNotFoundException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        }
+                        else {
+                            displayAlert("No history on the band!");
+                        }
+                        break;
+                    case 0x2C:	// GetPenaltyHisByIndex_RSP
+                        if (fos != null)
+                        {
+                            try {
+                                fos.write(_data, 4, _data.length - 4);
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                            if (idx != mLSHistoryCount) {
+                                send(new byte[]{(byte) 0xFE, (byte) 0xFE, 0x02, 0x2B, (byte)idx});    // Last byte is index
+                                idx++;
+                            }
+                            else {
+                                try {
+                                    fos.close();
+                                    displayAlert("Number of records transferred "+ mLSHistoryCount);
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                    displayAlert("Download history failed:"+ e.getMessage());
+                                }
+                            }
+                        }
+                        break;
+                    case 0x2E:	// CleanPenaltyHistory_RSP
+                        if (_data[4] == 0) {
+                            displayAlert("Lifestyle history erased.");
+                        }
+                        else
+                            displayAlert("Lifestyle history failed!");
+                        break;
+                }
+            }
+        }
+    };
+
+    private void displayAlert(String message) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setMessage(message);
+        AlertDialog dialog = builder.create();
+        dialog.show();
+    }
 
 	@Override
 	protected void onViewCreated(final Bundle savedInstanceState) {
@@ -289,6 +456,40 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
 		logFragment.onServiceStarted();
 	}
 
+    @Override
+    public void onDeviceConnected(final BluetoothDevice device) {
+	    super.onDeviceConnected(device);
+
+        // Enable all buttons about lifestyle
+        mSyncTime.setEnabled(true);
+        mSelectFile.setEnabled(true);
+        mGetLifestyleHistory.setEnabled(false);
+        mEraseLifestyleHitsory.setEnabled(true);
+    }
+
+        @Override
+    public void onDeviceDisconnected(final BluetoothDevice device) {
+	    super.onDeviceDisconnected(device);
+
+        // Disable all buttons about lifestyle
+        mSyncTime.setEnabled(false);
+        mSelectFile.setEnabled(false);
+        mGetLifestyleHistory.setEnabled(false);
+        mEraseLifestyleHitsory.setEnabled(false);
+
+    }
+
+    @Override
+    public void onDeviceConnecting(final BluetoothDevice device) {
+        super.onDeviceConnecting(device);
+
+        // Disable all buttons about lifestyle
+        mSyncTime.setEnabled(false);
+        mSelectFile.setEnabled(false);
+        mGetLifestyleHistory.setEnabled(false);
+        mEraseLifestyleHitsory.setEnabled(false);
+    }
+
 	@Override
 	protected int getDefaultDeviceName() {
 		return R.string.uart_default_name;
@@ -309,6 +510,12 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
 		if (mServiceBinder != null)
 			mServiceBinder.send(text);
 	}
+
+    @Override
+    public void send(final byte _data[]) {
+        if (mServiceBinder != null)
+            mServiceBinder.send(_data);
+    }
 
 	public void setEditMode(final boolean editMode) {
 		setEditMode(editMode, true);
@@ -552,7 +759,13 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
 		saveConfiguration();
 	}
 
-	@Override
+    @Override
+    public void onNewFile(final String fileName, final boolean duplicate) {
+        mHistoryFile = fileName+".bin";
+    }
+
+
+    @Override
 	public void onNewConfiguration(final String name, final boolean duplicate) {
 		final boolean exists = mDatabaseHelper.configurationExists(name);
 		if (exists) {
@@ -586,7 +799,7 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
 	public void onRenameConfiguration(final String newName) {
 		final boolean exists = mDatabaseHelper.configurationExists(newName);
 		if (exists) {
-			Toast.makeText(this, R.string.uart_configuration_name_already_taken, Toast.LENGTH_LONG).show();
+			Toast.makeText(this, "File Exists", Toast.LENGTH_LONG).show();
 			return;
 		}
 

@@ -28,11 +28,14 @@ import android.app.PendingIntent;
 import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.Environment;
 import android.support.annotation.NonNull;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.LocalBroadcastManager;
+import android.support.v7.app.AlertDialog;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -42,6 +45,13 @@ import com.google.android.gms.wearable.Node;
 import com.google.android.gms.wearable.NodeApi;
 import com.google.android.gms.wearable.Wearable;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+
+import no.nordicsemi.android.ble.data.Data;
 import no.nordicsemi.android.log.Logger;
 import no.nordicsemi.android.nrftoolbox.FeaturesActivity;
 import no.nordicsemi.android.nrftoolbox.R;
@@ -82,6 +92,11 @@ public class UARTService extends BleProfileService implements UARTManagerCallbac
 		@Override
 		public void send(final String text) {
 			mManager.send(text);
+		}
+
+		@Override
+		public void send(final byte _data[]) {
+			mManager.send(_data);
 		}
 	}
 
@@ -171,6 +186,20 @@ public class UARTService extends BleProfileService implements UARTManagerCallbac
 		final Intent broadcast = new Intent(BROADCAST_UART_RX);
 		broadcast.putExtra(EXTRA_DEVICE, getBluetoothDevice());
 		broadcast.putExtra(EXTRA_DATA, data);
+		LocalBroadcastManager.getInstance(this).sendBroadcast(broadcast);
+
+		// send the data received to other apps, e.g. the Tasker
+		final Intent globalBroadcast = new Intent(ACTION_RECEIVE);
+		globalBroadcast.putExtra(BluetoothDevice.EXTRA_DEVICE, getBluetoothDevice());
+		globalBroadcast.putExtra(Intent.EXTRA_TEXT, data);
+		sendBroadcast(globalBroadcast);
+	}
+
+	@Override
+	public void onDataReceived(final BluetoothDevice device, final String data, final byte _data[]) {
+		final Intent broadcast = new Intent(BROADCAST_UART_RX);
+		broadcast.putExtra(EXTRA_DEVICE, getBluetoothDevice());
+		broadcast.putExtra(EXTRA_DATA, _data);
 		LocalBroadcastManager.getInstance(this).sendBroadcast(broadcast);
 
 		// send the data received to other apps, e.g. the Tasker

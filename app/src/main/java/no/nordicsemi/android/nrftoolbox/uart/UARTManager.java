@@ -22,6 +22,7 @@
 
 package no.nordicsemi.android.nrftoolbox.uart;
 
+import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattService;
@@ -32,6 +33,8 @@ import android.text.TextUtils;
 import java.util.UUID;
 
 import no.nordicsemi.android.ble.WriteRequest;
+import no.nordicsemi.android.ble.callback.DataReceivedCallback;
+import no.nordicsemi.android.ble.data.Data;
 import no.nordicsemi.android.log.LogContract;
 import no.nordicsemi.android.nrftoolbox.profile.LoggableBleManager;
 
@@ -75,7 +78,7 @@ public class UARTManager extends LoggableBleManager<UARTManagerCallbacks> {
 					.with((device, data) -> {
 						final String text = data.getStringValue(0);
 						log(LogContract.Log.Level.APPLICATION, "\"" + text + "\" received");
-						mCallbacks.onDataReceived(device, text);
+						mCallbacks.onDataReceived(device, text, data.getValue());
 					});
 			requestMtu(260).enqueue();
 			enableNotifications(mTXCharacteristic).enqueue();
@@ -135,6 +138,23 @@ public class UARTManager extends LoggableBleManager<UARTManagerCallbacks> {
 
 		if (!TextUtils.isEmpty(text)) {
 			final WriteRequest request = writeCharacteristic(mRXCharacteristic, text.getBytes())
+					.with((device, data) -> log(LogContract.Log.Level.APPLICATION,
+							"\"" + data.getStringValue(0) + "\" sent"));
+			if (!mUseLongWrite) {
+				// This will automatically split the long data into MTU-3-byte long packets.
+				request.split();
+			}
+			request.enqueue();
+		}
+	}
+
+	public void send(final byte _data[]) {
+		// Are we connected?
+		if (mRXCharacteristic == null)
+			return;
+
+		if (null != _data) {
+			final WriteRequest request = writeCharacteristic(mRXCharacteristic, _data)
 					.with((device, data) -> log(LogContract.Log.Level.APPLICATION,
 							"\"" + data.getStringValue(0) + "\" sent"));
 			if (!mUseLongWrite) {
