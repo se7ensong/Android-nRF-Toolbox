@@ -153,18 +153,12 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
     public void onSyncTimeClicked (final View view) {
         // G/time:%d
         send("G/time:"+ mCalendar.getTimeInMillis() / 1000L);
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-
-        builder.setTitle("Time Synchronised")
-                .setMessage(mCalendar.getTime().toString());
-
-        AlertDialog dialog = builder.create();
-        dialog.show();
+        displayAlert(mCalendar.getTime().toString());
     }
 
     public void onSelectFileLSClicked (final View view) {
         final DialogFragment fragment = UARTNewHistoryFileDialogFragment.getInstance("LSHistory_"+
+                mCalendar.get(Calendar.SECOND) +
                 mCalendar.get(Calendar.MINUTE) +
                 mCalendar.get(Calendar.HOUR_OF_DAY) +
                 mCalendar.get(Calendar.DATE) , false);
@@ -195,13 +189,6 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
             try {
                 file.createNewFile();
                 send(new byte[] {(byte)0xFE, (byte)0xFE, 0x01, 0x29});  // GetPenaltyCount
-
-                // Notify user about the file
-                AlertDialog.Builder builder = new AlertDialog.Builder(this);
-                builder.setMessage("Lifestyle History Downloaded");
-                AlertDialog dialog = builder.create();
-                dialog.show();
-
             } catch (final Exception e) {
                 AlertDialog.Builder builder = new AlertDialog.Builder(this);
                 builder.setMessage("Error downloading data:" + e.getMessage());
@@ -352,10 +339,11 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
             final boolean hasData = intent.hasExtra("no.nordicsemi.android.nrftoolbox.uart.EXTRA_DATA");
             if (hasData) {
                 byte _data[] = intent.getByteArrayExtra("no.nordicsemi.android.nrftoolbox.uart.EXTRA_DATA");
-
+                if (_data.length <= 4) return;
                 switch (_data[3]) {
                     case 0x2A:	// GetPenaltyCount_RSP
-                        mLSHistoryCount = _data[4];
+                        mLSHistoryCount = _data[5] << 8 | _data[4
+                                ];
                         if (mLSHistoryCount != 0) {
                             folder = new File(Environment.getExternalStorageDirectory(), "LifeStyleHistory");
                             file = new File(folder, mHistoryFile);
@@ -363,7 +351,7 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
                                 try {
                                     fos = new FileOutputStream(file, true);
                                     // Start requesting the first record
-                                    send(new byte[]{(byte) 0xFE, (byte) 0xFE, 0x02, 0x2B, (byte)idx});    // Last byte is index
+                                    send(new byte[]{(byte) 0xFE, (byte) 0xFE, 0x03, 0x2B, (byte)(idx & 0xFF), (byte)((idx & 0xFF00) >> 8)});    // Last 2 bytes is index
                                     idx++;
                                 } catch (FileNotFoundException e) {
                                     e.printStackTrace();
@@ -383,7 +371,7 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
                                 e.printStackTrace();
                             }
                             if (idx != mLSHistoryCount) {
-                                send(new byte[]{(byte) 0xFE, (byte) 0xFE, 0x02, 0x2B, (byte)idx});    // Last byte is index
+                                send(new byte[]{(byte) 0xFE, (byte) 0xFE, 0x03, 0x2B, (byte)(idx & 0xFF), (byte)((idx & 0xFF00) >> 8)});    // Last 2 bytes are index
                                 idx++;
                             }
                             else {
@@ -393,6 +381,8 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
                                 } catch (IOException e) {
                                     e.printStackTrace();
                                     displayAlert("Download history failed:"+ e.getMessage());
+                                } finally {
+                                    idx=0;
                                 }
                             }
                         }
@@ -412,6 +402,7 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
     private void displayAlert(String message) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setMessage(message);
+        builder.setPositiveButton("OK", (_dialog, which) -> _dialog.dismiss());
         AlertDialog dialog = builder.create();
         dialog.show();
     }
