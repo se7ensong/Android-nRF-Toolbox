@@ -90,6 +90,13 @@
             android:onClick="onSelectFileLSClicked"
             android:text="Select FILE" />
 
+        <ProgressBar
+            android:id="@+id/progressbar_getHistory"
+            style="@android:style/Widget.Holo.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"/>
+
         <Button
             android:id="@+id/action_getLifestyleHistory"
             android:layout_width="match_parent"

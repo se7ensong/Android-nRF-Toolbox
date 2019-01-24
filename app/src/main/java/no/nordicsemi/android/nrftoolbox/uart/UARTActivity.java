@@ -63,6 +63,7 @@ import android.view.Menu;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.Toast;
 import android.widget.Button;
 
@@ -109,7 +110,8 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
 		UARTNewConfigurationDialogFragment.NewConfigurationDialogListener, UARTConfigurationsAdapter.ActionListener, AdapterView.OnItemSelectedListener,
         UARTNewHistoryFileDialogFragment.NewFileDialogListener,
 		GoogleApiClient.ConnectionCallbacks {
-	private Button mSyncTime, mSelectFile, mGetLifestyleHistory, mEraseLifestyleHitsory;
+	private Button mSyncTime, mSelectFile, mGetLifestyleHistory, mEraseLifestyleHistory;
+	private ProgressBar mProgressBar;
 	private final static String TAG = "UARTActivity";
 
 	private final static String PREFS_BUTTON_ENABLED = "prefs_uart_enabled_";
@@ -152,11 +154,13 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
 
     public void onSyncTimeClicked (final View view) {
         // S/time:%d
+        mCalendar.setTimeInMillis(System.currentTimeMillis());
         send("S/time:"+ ((mCalendar.getTimeInMillis() / 1000L) - 946684800));
         displayAlert(mCalendar.getTime().toString());
     }
 
     public void onSelectFileLSClicked (final View view) {
+        mCalendar.setTimeInMillis(System.currentTimeMillis());
         final DialogFragment fragment = UARTNewHistoryFileDialogFragment.getInstance("LSHistory_"+
                 mCalendar.get(Calendar.SECOND) +
                 mCalendar.get(Calendar.MINUTE) +
@@ -328,7 +332,8 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
 		mSelectFile = findViewById(R.id.action_selectFile);
 		mSyncTime = findViewById(R.id.action_syncTime);
 		mGetLifestyleHistory = findViewById(R.id.action_getLifestyleHistory);
-        mEraseLifestyleHitsory = findViewById(R.id.action_eraseLifestyleHistory);
+        mEraseLifestyleHistory = findViewById(R.id.action_eraseLifestyleHistory);
+        mProgressBar = findViewById(R.id.progressbar_getHistory);
 
         LocalBroadcastManager.getInstance(this).registerReceiver(mLifestyleHistoryReceiver, new IntentFilter("no.nordicsemi.android.nrftoolbox.uart.BROADCAST_UART_RX"));
     }
@@ -342,8 +347,9 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
                 if (_data.length <= 4) return;
                 switch (_data[3]) {
                     case 0x2A:	// GetPenaltyCount_RSP
-                        mLSHistoryCount = _data[5] << 8 | _data[4
-                                ];
+                        idx = 0;
+                        setGetHistoryProgress(0);
+                        mLSHistoryCount = (_data[5]<<8) | (_data[4] & 0xFF);
                         if (mLSHistoryCount != 0) {
                             folder = new File(Environment.getExternalStorageDirectory(), "LifeStyleHistory");
                             file = new File(folder, mHistoryFile);
@@ -367,6 +373,7 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
                         {
                             try {
                                 fos.write(_data, 4, _data.length - 4);
+                                setGetHistoryProgress(idx * 100/mLSHistoryCount);
                             } catch (IOException e) {
                                 e.printStackTrace();
                             }
@@ -405,6 +412,10 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
         builder.setPositiveButton("OK", (_dialog, which) -> _dialog.dismiss());
         AlertDialog dialog = builder.create();
         dialog.show();
+    }
+
+    private void setGetHistoryProgress(int progress) {
+        mProgressBar.setProgress(progress);
     }
 
 	@Override
@@ -455,7 +466,7 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
         mSyncTime.setEnabled(true);
         mSelectFile.setEnabled(true);
         mGetLifestyleHistory.setEnabled(false);
-        mEraseLifestyleHitsory.setEnabled(true);
+        mEraseLifestyleHistory.setEnabled(true);
     }
 
         @Override
@@ -466,8 +477,7 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
         mSyncTime.setEnabled(false);
         mSelectFile.setEnabled(false);
         mGetLifestyleHistory.setEnabled(false);
-        mEraseLifestyleHitsory.setEnabled(false);
-
+        mEraseLifestyleHistory.setEnabled(false);
     }
 
     @Override
@@ -478,7 +488,7 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
         mSyncTime.setEnabled(false);
         mSelectFile.setEnabled(false);
         mGetLifestyleHistory.setEnabled(false);
-        mEraseLifestyleHitsory.setEnabled(false);
+        mEraseLifestyleHistory.setEnabled(false);
     }
 
 	@Override
