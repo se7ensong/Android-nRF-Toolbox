@@ -80,7 +80,7 @@
             android:layout_height="wrap_content"
             android:enabled="false"
             android:onClick="onSyncTimeClicked"
-            android:text="Sync Time" />
+            android:text="SYNC TIME AND STOP" />
 
         <Button
             android:id="@+id/action_selectFile"
