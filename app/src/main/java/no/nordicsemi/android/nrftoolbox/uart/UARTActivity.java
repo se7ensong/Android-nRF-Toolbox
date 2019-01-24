@@ -162,10 +162,11 @@ public class UARTActivity extends BleProfileServiceReadyActivity<UARTService.UAR
     public void onSelectFileLSClicked (final View view) {
         mCalendar.setTimeInMillis(System.currentTimeMillis());
         final DialogFragment fragment = UARTNewHistoryFileDialogFragment.getInstance("LSHistory_"+
-                mCalendar.get(Calendar.SECOND) +
-                mCalendar.get(Calendar.MINUTE) +
+                mCalendar.get(Calendar.DATE) +
                 mCalendar.get(Calendar.HOUR_OF_DAY) +
-                mCalendar.get(Calendar.DATE) , false);
+                mCalendar.get(Calendar.MINUTE) +
+                mCalendar.get(Calendar.SECOND)
+                 , false);
         fragment.show(getSupportFragmentManager(), null);
         mGetLifestyleHistory.setEnabled(true);
     }
